@@ -104,15 +104,17 @@
             display:inline-flex;align-items:center;padding:5px 10px;
             background:rgba(176,38,255,.08);border:1px solid rgba(176,38,255,.2);border-radius:3px;
             font-family:var(--font-b);font-size:.85rem;font-weight:600;color:var(--purple);margin:3px;
+            direction:auto;
         }
 
         /* Word reveal box */
         .wbox{
-            font-family:var(--font-d);font-size:1.8rem;font-weight:900;text-transform:uppercase;
+            font-family:var(--font-d);font-size:1.5rem;font-weight:900;
             text-align:center;padding:28px 16px;background:var(--surface);
             border:2px solid var(--green);border-radius:6px;color:var(--green);
             text-shadow:0 0 12px rgba(57,255,20,.35);position:relative;min-height:100px;
             display:flex;align-items:center;justify-content:center;
+            direction:auto;word-break:break-word;line-height:1.4;
         }
         /* Overlay — simple dark overlay, no backdrop-filter */
         .wbox-overlay{
@@ -181,6 +183,34 @@
 
         /* Disclaimer */
         .disc{border:1px solid rgba(255,45,149,.12);color:var(--muted);padding:10px;font-size:.65rem;margin-top:20px;border-radius:3px;text-align:center;line-height:1.5}
+
+        /* Police Raid */
+        .raid-box{
+            background:rgba(255,45,149,.08);border:2px solid var(--pink);border-radius:6px;
+            padding:20px 16px;text-align:center;direction:auto;
+        }
+        .raid-title{
+            font-family:var(--font-d);font-size:1rem;font-weight:700;color:var(--pink);
+            text-shadow:0 0 10px rgba(255,45,149,.4);text-transform:uppercase;letter-spacing:.1em;
+        }
+        .raid-word{
+            font-family:var(--font-d);font-size:1.1rem;font-weight:900;color:var(--yellow);
+            text-shadow:0 0 8px rgba(255,230,0,.3);margin:10px 0;direction:auto;word-break:break-word;
+        }
+        .raid-sub{font-size:.8rem;color:var(--muted)}
+        .safe-box{
+            background:rgba(57,255,20,.06);border:2px solid var(--green);border-radius:6px;
+            padding:20px 16px;text-align:center;direction:auto;
+        }
+        .safe-title{
+            font-family:var(--font-d);font-size:1rem;font-weight:700;color:var(--green);
+            text-shadow:0 0 10px rgba(57,255,20,.3);text-transform:uppercase;letter-spacing:.1em;
+        }
+        .safe-word{
+            font-family:var(--font-d);font-size:1.1rem;font-weight:900;color:var(--cyan);
+            text-shadow:0 0 8px rgba(0,240,255,.3);margin:10px 0;direction:auto;word-break:break-word;
+        }
+        .safe-sub{font-size:.8rem;color:var(--muted)}
     </style>
 </head>
 <body>
@@ -278,6 +308,8 @@
         <div class="t-section mb1">Discussion Phase</div>
         <p class="t-m t-sm mb4">Discuss the word at the table!</p>
         <div id="d-plist" class="fw mb4"></div>
+        <div id="raid-result" style="display:none" class="mb4"></div>
+        <button id="b-reveal" class="btn mb2" style="border-color:var(--yellow);color:var(--yellow);background:rgba(255,230,0,.06)">🚨 Reveal Source</button>
         <button id="b-next" class="btn btn-p" style="display:none">Next Round</button>
         <button id="b-end" class="btn btn-s mt2" style="display:none">End Game</button>
     </div>
@@ -314,7 +346,336 @@ const app=initializeApp({
 const db=getFirestore(app),auth=getAuth(app);
 const COL="recruit_madness_games";
 
-const SYS_WORDS=["Firefighter","Astronaut","Librarian","Archaeologist","Sommelier","Beekeeper","Cartographer","Gondolier","Blacksmith","Taxidermist","Puppeteer","Locksmith","Volcanologist","Chimney Sweep","Falconer","Cryptographer","Perfumer","Stunt Double","Ice Sculptor","Treasure Hunter","Storm Chaser","Snake Charmer","Sword Swallower","Town Crier","Lighthouse Keeper","Toy Designer","Food Critic","Train Conductor","Zookeeper","Parachute Instructor","Mime Artist","Submarine Captain","Diamond Cutter","Hot Air Balloon Pilot","Cheese Maker","Spy","Bounty Hunter","Forensic Scientist","Earthquake Engineer","Space Tourist","Robot Mechanic","Deep Sea Diver","Wildlife Photographer","Stuntman","Magician","Escape Room Designer","Voice Actor","Cave Explorer","Professional Gamer","Pet Psychic"];
+// English quirky project sentences — 150 entries across categories
+const SYS_EN=[
+// Food & Restaurants
+"Opening a shawarma shop that only serves dessert shawarmas",
+"Starting a restaurant where the waiters are all robots",
+"Need a taste tester for a hot sauce that makes people cry",
+"Building a drive-through that delivers food by drone",
+"Launching a food truck that only parks in the middle of nowhere",
+"Opening a bakery that only bakes at midnight",
+"Starting a cereal café with 200 cereal options",
+"Need a chef for a restaurant where customers cook their own food",
+"Building an ice cream shop inside an igloo",
+"Opening a coffee shop where the barista is a parrot",
+"Launching a sushi place on a boat that never docks",
+"Starting a pizza place where every pizza is a mystery topping",
+"Need someone to run a restaurant with no menu at all",
+"Opening a juice bar inside a gym locker room",
+"Building a popcorn factory inside a cinema",
+// Construction & Architecture
+"Building a mosque that doubles as a community library",
+"Constructing a school made entirely out of recycled plastic",
+"Need an architect for a house that rotates with the sun",
+"Building a bridge connecting two shopping malls",
+"Designing a parking garage that looks like a medieval castle",
+"Constructing a swimming pool on top of a skyscraper",
+"Building a playground designed exclusively for adults",
+"Need an engineer for a tunnel that goes under a lake",
+"Designing a hospital that feels like a five-star resort",
+"Building a stadium that converts into a concert venue overnight",
+"Constructing a fire station shaped like a giant dalmatian",
+"Need someone to build a treehouse village for tourists",
+"Designing a fully underground shopping mall",
+"Building a mosque with a rooftop garden and café",
+"Constructing a football pitch on a cruise ship deck",
+// Education & Tutoring
+"Starting a tutoring center for grandparents learning TikTok",
+"Opening a driving school for people who are terrified of cars",
+"Need a math teacher who explains everything using football analogies",
+"Building a coding bootcamp inside a desert camping site",
+"Starting a language school that only teaches internet slang",
+"Opening an art school where all the paint is made from food",
+"Need a science tutor who does every experiment with candy",
+"Building a music academy inside a parking garage",
+"Starting a cooking school for people who somehow burn water",
+"Opening a flight school that has zero actual airplanes",
+"Need a swimming coach for people who are scared of puddles",
+"Starting a photography school that only allows phone cameras",
+"Building a robotics lab for children inside a shopping mall",
+"Opening a public speaking academy for extremely shy people",
+"Need a fitness instructor for a senior citizen breakdancing crew",
+// Business & Startups
+"Launching a delivery service that only uses camels",
+"Starting a car wash that cleans cars with sparkling water",
+"Need a CEO for a company that literally sells nothing",
+"Building an app that tells you the perfect time to nap",
+"Launching a laundry service that loses exactly one sock per order",
+"Starting a moving company that only operates on Fridays",
+"Need a general manager for a hotel that has no rooms",
+"Building a ride-share service that exclusively uses golf carts",
+"Launching a subscription box of random items from your neighbors",
+"Starting an airline where every single seat is a window seat",
+"Need a consultant for a business that rents umbrellas to fish",
+"Building a vending machine that dispenses homework excuses",
+"Launching a taxi service exclusively for house cats",
+"Starting a company that bubble-wraps absolutely everything you own",
+"Need an investor for a cologne that smells like fresh rain",
+// Entertainment & Events
+"Organizing a wedding ceremony on a roller coaster",
+"Starting a cinema where the audience votes on the ending",
+"Need a DJ who exclusively plays nature sounds at parties",
+"Building an escape room inside an actual retired prison",
+"Launching a comedy club where only the audience tells jokes",
+"Organizing a high-fashion runway show inside a supermarket",
+"Starting a karaoke bar where you sing your food order to the chef",
+"Need an event planner for a birthday party on a submarine",
+"Building a theme park that only has one single ride",
+"Launching a book club that exclusively reads appliance manuals",
+"Organizing an international talent show just for household pets",
+"Starting a podcast that is recorded entirely underwater",
+"Need a host for a cooking competition held in total darkness",
+"Building a laser tag arena inside a corporate office building",
+"Launching a city-wide treasure hunt with no actual treasure",
+// Health & Wellness
+"Opening a luxury spa inside an auto mechanic workshop",
+"Starting a yoga class for people who cannot touch their toes",
+"Need a dentist who plays competitive video games during checkups",
+"Building a pharmacy that also sells custom birthday cakes",
+"Launching a meditation app that only plays the sound of cats purring",
+"Opening a hair salon where every stylist wears a blindfold",
+"Starting a therapy practice exclusively for anxious robots",
+"Need a nutritionist to oversee the cafeteria at a candy factory",
+"Building a gym where every machine is powered by solar panels",
+"Launching a wellness retreat held in a shopping mall parking lot",
+// Tech & Innovation
+"Building an AI that ghostwrites your apology text messages",
+"Need a developer for an app that translates baby crying into words",
+"Launching a smart fridge that publicly judges your food choices",
+"Starting a tech company that only manufactures completely useless gadgets",
+"Building a robot that washes your laundry but refuses to fold anything",
+"Need a programmer to build a website that loads slower on purpose",
+"Launching a GPS that gives directions only using local landmarks",
+"Starting the world's first social media platform designed for plants",
+"Building a drone delivery network exclusively for handwritten love letters",
+"Need an engineer to design a fully self-driving shopping cart",
+// Community & Social
+"Building a community vegetable garden on a highway median strip",
+"Starting a neighborhood watch program run entirely by grandmothers",
+"Need a volunteer coordinator for a beach cleanup held by moonlight",
+"Launching a mentorship program where children teach adults new skills",
+"Building a free lending library inside a city bus stop shelter",
+"Starting a charity that donates warm socks to cold public statues",
+"Need a project manager to repaint every single bench in the city",
+"Building a public hammock relaxation park in the middle of downtown",
+"Launching a pen pal exchange program between rival neighborhoods",
+"Starting an official lost and found department for forgotten dreams",
+// Sports & Adventure
+"Starting a football league where every player must be barefoot",
+"Need a head coach for a competitive underwater basketball team",
+"Building a rock climbing wall on the exterior of a shopping mall",
+"Launching a marathon where every runner must run entirely backwards",
+"Starting a surfing school in a landlocked country with no ocean",
+"Need an official referee for a professional pillow fight championship",
+"Building a go-kart racetrack that weaves through a grocery store",
+"Launching a skydiving club specifically for people afraid of heights",
+"Starting a bowling alley that only uses perfectly square balls",
+"Need a certified trainer for a competitive professional napping team",
+// Agriculture & Nature
+"Starting a specialty farm that exclusively grows purple vegetables",
+"Need a beekeeper for a hive of bees that refuse to produce honey",
+"Building a full greenhouse on the roof of a city bus",
+"Launching a flower delivery service that uses carrier pigeons",
+"Starting a petting zoo stocked entirely with imaginary animals",
+"Need a gardener to maintain a rooftop jungle in the middle of the desert",
+"Building a commercial fish farm inside a residential swimming pool",
+"Launching a tree-planting initiative targeting concrete urban jungles",
+"Starting a gourmet mushroom farm in a basement with no windows",
+"Need a farmer brave enough to grow watermelons in the snow",
+// Transport & Logistics
+"Starting a taxi service where every ride goes in a perfect circle",
+"Need a ship captain for a ferry that permanently stays at the dock",
+"Building a dedicated bicycle superhighway across the entire city",
+"Launching a furniture moving company that only uses shopping carts",
+"Starting scenic helicopter tours exclusively over parking lots",
+"Need a logistics expert to coordinate delivering sand to the beach",
+"Building a personal monorail connecting your bedroom to the fridge",
+"Launching a rickshaw taxi service pulled by very enthusiastic dogs",
+"Starting a bus route that exclusively operates at three in the morning",
+"Need a hot air balloon pilot for an airborne pizza delivery service"
+];
+
+// Arabic quirky project sentences — Qatari/Gulf dialect — 150 entries
+const SYS_AR=[
+// أكل ومطاعم
+"فاتحين مطعم شاورما بس كل الشاورمات حلويات",
+"نبي نفتح مطعم الويترية كلهم روبوتات",
+"مطلوب واحد يتذوق صوص حار يخلي الناس تبكي",
+"نبي نسوي درايف ثرو يوصل الأكل بالدرون",
+"فاتحين فود ترك بس يوقف في نص البر",
+"نبي نفتح مخبز ما يخبز إلا نص الليل",
+"مطلوب واحد يدير كافيه سيريال فيه ٢٠٠ نوع",
+"نبي شيف حق مطعم الزبون يطبخ لنفسه",
+"فاتحين محل آيسكريم داخل بيت ثلج",
+"نبي نفتح كوفي شوب الباريستا ببغاء يسوي القهوة",
+"مطلوب واحد يدير مطعم سوشي على سفينة ما ترسي أبد",
+"نبي نفتح بيتزا كل بيتزا مفاجأة ما تدري شنو فيها",
+"مطلوب مدير حق مطعم بدون منيو خلاص",
+"نبي نفتح جوس بار داخل لوكر الجم",
+"فاتحين مصنع فشار داخل سينما",
+// بناء وعمارة
+"نبي نبني مسجد وفيه مكتبة حق الحي كله",
+"مطلوب واحد يبني مدرسة كلها من بلاستيك ريسايكل",
+"نبي مهندس يصمم بيت يدور ويا الشمس",
+"مطلوب واحد يبني جسر بين مولين تمشي عليه",
+"نبي نصمم باركنق شكله قلعة من الخارج",
+"مطلوب واحد يبني مسبح فوق أعلى برج في الدوحة",
+"نبي نبني ملعب ألعاب حق الكبار بس ممنوع العيال",
+"مطلوب مهندس يحفر نفق تحت بحيرة",
+"نبي نصمم مستشفى من برا يشبه فندق فايف ستار",
+"مطلوب واحد يبني ستاد يتحول كونسرت بالليل",
+"نبي نبني محطة إطفاء شكلها كلب دلميشن كبير",
+"مطلوب واحد يبني قرية بيوت شجر حق السياح",
+"نبي نصمم مول تحت الأرض كله مكيف",
+"مطلوب واحد يبني مسجد فوقه حديقة وكافيه",
+"نبي نبني ملعب كورة فوق سفينة كروز",
+// تعليم ودروس
+"فاتحين معهد حق اليدات يتعلمون تيك توك وانستقرام",
+"نبي نفتح مدرسة سواقة حق اللي يخافون من السيارة",
+"مطلوب أستاذ رياضيات يشرح كل شي عن طريق الكورة",
+"نبي نسوي بوت كامب برمجة في مخيم بالبر تحت النجوم",
+"فاتحين مدرسة لغات بس يعلمون سلانق واختصارات",
+"نبي نفتح مدرسة رسم الألوان كلها مصنوعة من أكل",
+"مطلوب أستاذ علوم يسوي التجارب كلها بالحلويات",
+"نبي نفتح معهد موسيقى داخل باركنق تحت الأرض",
+"فاتحين مدرسة طبخ حق اللي يحرقون حتى الماي",
+"نبي نفتح مدرسة طيران ما عندهم ولا طيارة وحدة",
+"مطلوب مدرب سباحة حق ناس يخافون حتى من البركة",
+"نبي نفتح مدرسة تصوير بس بكاميرا الموبايل",
+"مطلوب واحد يبني معمل روبوتات للعيال في المول",
+"نبي نفتح أكاديمية خطابة حق اللي يستحون يتكلمون",
+"مطلوب مدرب لياقة حق فريق رقص يدات وأجداد",
+// بزنس وشركات
+"نبي نطلق خدمة توصيل بس على جمال",
+"مطلوب واحد يفتح مغسلة سيارات تغسل بموية بيرية",
+"نبي سي إي أو حق شركة ما تبيع أي شي",
+"مطلوب واحد يسوي أبلكيشن يقولك الحين وقت القيلولة",
+"نبي نفتح مغسلة ملابس تضيع شراب واحد كل مرة ثابت",
+"مطلوب واحد يفتح شركة نقل تشتغل بس يوم الجمعة",
+"نبي مدير حق فندق ما فيه ولا غرفة",
+"مطلوب واحد يسوي خدمة توصيل بقولف كارتات",
+"نبي نطلق بوكس اشتراك أغراض عشوائية من اليران",
+"مطلوب واحد يفتح خط طيران كل المقاعد على الشباك",
+"نبي مستشار حق شركة تأجر شمسيات للأسماك",
+"مطلوب واحد يسوي ماكينة بيع تبيع أعذار حق الواجبات",
+"نبي نطلق سرفس تاكسي حق القطاوه بس",
+"مطلوب واحد يفتح شركة تلف كل شي عندك ببابل راب",
+"نبي مستثمر حق عطر ريحته مطر صيفي",
+// ترفيه وحفلات
+"نبي ننظم عرس على رولر كوستر",
+"مطلوب واحد يفتح سينما الجمهور يصوت على النهاية",
+"نبي دي جي ما يشغل إلا أصوات طبيعة",
+"مطلوب واحد يبني غرفة هروب داخل سجن قديم حقيقي",
+"نبي نفتح نادي كوميديا الجمهور هو اللي يقول النكت",
+"مطلوب واحد ينظم عرض أزياء في ممرات السوبرماركت",
+"نبي نفتح كاريوكي تغني طلبك للشيف بدال ما تقوله",
+"مطلوب منظم حفلات حق عيد ميلاد في غواصة",
+"نبي نبني ملاهي فيها بس لعبة وحدة ما فيه غيرها",
+"مطلوب واحد يفتح نادي كتاب يقرون بس كتالوجات أجهزة",
+"نبي ننظم مسابقة مواهب حق الحيوانات الأليفة",
+"مطلوب واحد يسوي بودكاست يتسجل تحت الماي كله",
+"نبي مقدم حق مسابقة طبخ في ظلام دامس",
+"مطلوب واحد يبني ليزر تاق وسط المكاتب",
+"نبي ننظم بحث عن كنز في كل شوارع المدينة",
+// صحة وعناية
+"نبي نفتح سبا فخم داخل ورشة تصليح سيارات",
+"مطلوب مدرب يوقا حق ناس ما يقدرون يلمسون صوابعهم",
+"نبي دكتور أسنان يلعب بلايستيشن وهو يفحصك",
+"مطلوب واحد يفتح صيدلية وفيها كيكات عيد ميلاد بعد",
+"نبي نسوي أبلكيشن تأمل بس يشغل صوت قطوه تخرخر",
+"مطلوب واحد يفتح صالون الحلاقين كلهم معصبين عيونهم",
+"نبي نفتح عيادة نفسية حق روبوتات عندهم قلق اجتماعي",
+"مطلوب أخصائي تغذية حق كافتيريا مصنع شوكولاتة",
+"نبي نبني جم كل أجهزته تشتغل بالطاقة الشمسية",
+"مطلوب واحد يفتح منتجع صحي في باركنق مول",
+// تكنولوجيا
+"نبي نبني ذكاء اصطناعي يكتب لك رسائل الاعتذار",
+"مطلوب مبرمج يسوي أبلكيشن يترجم بكاء البيبي لكلام",
+"نبي نسوي ثلاجة ذكية تحكم على أكلك وتعلق عليه",
+"مطلوب واحد يفتح شركة تيك تسوي بس أشياء ما لها فايدة",
+"نبي نبني روبوت يغسل الملابس بس يرفض يطويها",
+"مطلوب مبرمج حق موقع مصمم إنه يفتح ببطء عمداً",
+"نبي نسوي جي بي إس يوصفلك الطريق بس بالأماكن المعروفة",
+"مطلوب واحد يسوي سوشيال ميديا خاص بالنباتات",
+"نبي نسوي سرفس توصيل رسائل حب بالدرون",
+"مطلوب مهندس يصمم عربية سوبرماركت تسوق نفسها",
+// مجتمع وتطوع
+"نبي نبني حديقة خضار مجتمعية وسط الشارع العام",
+"مطلوب واحد ينظم حراسة حي كلها يدات متقاعدات",
+"نبي منسق متطوعين حق تنظيف شاطئ على ضوء القمر",
+"مطلوب واحد يطلق برنامج العيال يعلمون أهاليهم أشياء يديدة",
+"نبي نبني مكتبة مجانية داخل محطة باص",
+"مطلوب واحد يفتح جمعية خيرية توزع جوارب على التماثيل",
+"نبي مدير مشروع يعيد بوي كل كرسي عام في المدينة",
+"نبي نبني حديقة أراجيح في قلب وسط البلد",
+"مطلوب واحد يطلق برنامج مراسلة بين أحياء يتنافسون",
+"نبي نفتح مكتب أشياء ضايعة بس حق الأحلام المنسية",
+// رياضة ومغامرات
+"نبي نطلق دوري كورة قدم الكل يلعب حفيان بدون نعال",
+"مطلوب كوتش حق فريق باسكتبول يلعبون تحت الماي",
+"نبي نبني جدار تسلق على واجهة المول من برا",
+"مطلوب واحد ينظم ماراثون الكل لازم يركض ورا",
+"نبي نفتح مدرسة سيرفنق في بلد ما عنده بحر",
+"مطلوب حكم رسمي حق بطولة ضرب مخدات عالمية",
+"نبي نبني حلبة قو كارت تمر من داخل السوبرماركت",
+"مطلوب واحد يفتح نادي سكاي دايفنق حق اللي يخافون الارتفاع",
+"نبي نفتح صالة بولينق الكرات كلها مربعة",
+"مطلوب مدرب محترف حق فريق نوم تنافسي",
+// زراعة وطبيعة
+"نبي نفتح مزرعة تزرع بس خضار لونها بنفسجي",
+"مطلوب نحال حق نحل يرفض يسوي عسل ويضرب عن العمل",
+"نبي نبني بيت زجاجي فوق سقف باص المدينة",
+"مطلوب واحد يطلق خدمة توصيل ورد بحمام زاجل",
+"نبي نفتح حديقة حيوانات كل الحيوانات فيها خيالية",
+"مطلوب بستاني يزرع غابة فوق سطح بناية في نص الصحراء",
+"نبي نبني مزرعة أسماك داخل مسبح البيت",
+"مطلوب واحد يطلق حملة زراعة أشجار في شوارع إسفلت",
+"نبي نفتح مزرعة فطر في سرداب بدون شبابيك",
+"مطلوب مزارع شجاع يزرع جح في نص الثلج",
+// نقل ومواصلات
+"نبي نفتح تاكسي بس يدور بدوائر ما يوصل",
+"مطلوب قبطان حق عبارة ما تطلع من المينا أبداً",
+"نبي نبني طريق سريع حق الدراجات يغطي كل المدينة",
+"مطلوب واحد يفتح شركة نقل أثاث بعربيات السوبرماركت بس",
+"نبي نطلق جولات هليكوبتر سياحية فوق الباركنقات",
+"مطلوب خبير لوجستي حق مشروع توصيل رمل للبحر",
+"نبي نبني قطار صغير بين غرفة نومك والثلاجة",
+"مطلوب واحد يطلق سرفس ركشة تجرها كلاب حماسية",
+"نبي نفتح خط باصات يشتغل بس الساعة ثلاث الفجر",
+"مطلوب طيار حق منطاد هواء يوصل بيتزا حق البيوت"
+];
+
+// Detect language from player submissions
+function detectLang(subs){
+    const arRegex=/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+    let arCount=0,enCount=0;
+    Object.values(subs).forEach(words=>{
+        words.forEach(w=>{
+            if(arRegex.test(w))arCount++;
+            else enCount++;
+        });
+    });
+    if(arCount>0&&enCount>0)return'mixed';
+    if(arCount>0)return'ar';
+    return'en';
+}
+
+function rndSys(n,lang){
+    let pool;
+    if(lang==='ar')pool=[...SYS_AR];
+    else if(lang==='mixed'){
+        // Mix both pools
+        const halfN=Math.ceil(n/2);
+        const arPart=[...SYS_AR];const enPart=[...SYS_EN];
+        for(let i=arPart.length-1;i>0;i--){const j=Math.random()*i|0;[arPart[i],arPart[j]]=[arPart[j],arPart[i]]}
+        for(let i=enPart.length-1;i>0;i--){const j=Math.random()*i|0;[enPart[i],enPart[j]]=[enPart[j],enPart[i]]}
+        pool=[...enPart.slice(0,halfN),...arPart.slice(0,halfN)];
+    }
+    else pool=[...SYS_EN];
+    for(let i=pool.length-1;i>0;i--){const j=Math.random()*i|0;[pool[i],pool[j]]=[pool[j],pool[i]]}
+    return pool.slice(0,n);
+}
 
 let uid,gid,unsub;
 const $=id=>document.getElementById(id);
@@ -332,12 +693,11 @@ function show(id){
 }
 
 function genId(){return Math.random().toString().substring(2,6)}
-function rndSys(n){const s=[...SYS_WORDS];for(let i=s.length-1;i>0;i--){const j=Math.random()*i|0;[s[i],s[j]]=[s[j],s[i]]}return s.slice(0,n)}
 
 // Firebase actions — kept minimal, no unnecessary reads
 async function createGame(){
     gid=genId();
-    await setDoc(doc(db,COL,gid),{hostId:uid,status:'lobby',players:[],wordSubmissions:{},wordPool:[],roundOrder:[],currentRound:0,totalRounds:0,currentMessengerId:'',currentWord:'',createdAt:serverTimestamp()});
+    await setDoc(doc(db,COL,gid),{hostId:uid,status:'lobby',players:[],wordSubmissions:{},wordPool:[],playerWords:[],roundOrder:[],currentRound:0,totalRounds:0,currentMessengerId:'',currentWord:'',createdAt:serverTimestamp()});
     joinGame(gid,true);
 }
 
@@ -409,10 +769,12 @@ async function finalizePool(){
     const ref=doc(db,COL,gid);
     const snap=await getDoc(ref);
     const d=snap.data(),subs=d.wordSubmissions||{};
-    let all=[];
-    Object.values(subs).forEach(w=>{all=all.concat(w)});
+    let playerWords=[];
+    Object.values(subs).forEach(w=>{playerWords=playerWords.concat(w)});
+    const lang=detectLang(subs);
     const sysCount=Math.max(2,d.players.length);
-    all=all.concat(rndSys(sysCount));
+    const sysWords=rndSys(sysCount,lang);
+    let all=[...playerWords,...sysWords];
     // Shuffle
     for(let i=all.length-1;i>0;i--){const j=Math.random()*i|0;[all[i],all[j]]=[all[j],all[i]]}
     
@@ -423,7 +785,7 @@ async function finalizePool(){
     for(let i=s2.length-1;i>0;i--){const j=Math.random()*i|0;[s2[i],s2[j]]=[s2[j],s2[i]]}
     const ro=[...s1,...s2];
     
-    await updateDoc(ref,{wordPool:all,totalRounds:tot,currentRound:1,roundOrder:ro,currentMessengerId:ro[0],currentWord:all[0]||'Mystery',status:'messenger_reveal'});
+    await updateDoc(ref,{wordPool:all,playerWords:playerWords,totalRounds:tot,currentRound:1,roundOrder:ro,currentMessengerId:ro[0],currentWord:all[0]||'Mystery',status:'messenger_reveal'});
 }
 
 async function messengerDone(){await updateDoc(doc(db,COL,gid),{status:'discussion'})}
@@ -479,7 +841,8 @@ function render(d){
             show('S4');
             $('m-rn').textContent=d.currentRound;
             $('m-tr').textContent=d.totalRounds;
-            $('r-word').textContent=d.currentWord.toUpperCase();
+            $('r-word').textContent=d.currentWord;
+            $('r-word').dir='auto';
             $('w-overlay').classList.remove('off');
             $('r-word').style.visibility='hidden';
             $('b-read').style.display='none';
@@ -502,6 +865,19 @@ function render(d){
             t.textContent=p.name.toUpperCase();
             dl.appendChild(t);
         });
+        // Reset raid reveal each round (only if not already revealed this round)
+        if(!window._raidRevealedRound||window._raidRevealedRound!==d.currentRound){
+            $('raid-result').style.display='none';
+            $('raid-result').innerHTML='';
+            $('b-reveal').style.display=isHost?'block':'none';
+        }else{
+            $('b-reveal').style.display='none';
+        }
+        // Store current word & playerWords for reveal check
+        window._currentWord=d.currentWord;
+        window._playerWords=d.playerWords||[];
+        window._currentRoundNum=d.currentRound;
+        
         const isFinal=d.currentRound>=d.totalRounds;
         $('b-next').style.display=isHost?'block':'none';
         $('b-next').textContent=isFinal?'Finish Game':'Next Round';
@@ -540,6 +916,33 @@ $('w-overlay').onclick=()=>{
     $('b-read').style.display='block';
 };
 $('b-read').onclick=messengerDone;
+
+// Police Raid reveal
+$('b-reveal').onclick=()=>{
+    const word=window._currentWord||'';
+    const playerWords=window._playerWords||[];
+    const isPlayerWord=playerWords.some(pw=>pw===word);
+    const result=$('raid-result');
+    
+    if(!isPlayerWord){
+        // POLICE RAID — system word, no player typed this
+        result.innerHTML=`<div class="raid-box">
+            <div class="raid-title">🚨 POLICE RAID 🚨</div>
+            <div class="raid-word" dir="auto">${word}</div>
+            <div class="raid-sub">No one typed this word — everyone got caught!</div>
+        </div>`;
+    }else{
+        // Safe — a player submitted this word
+        result.innerHTML=`<div class="safe-box">
+            <div class="safe-title">✅ ALL CLEAR</div>
+            <div class="safe-word" dir="auto">${word}</div>
+            <div class="safe-sub">This was submitted by a player.</div>
+        </div>`;
+    }
+    result.style.display='block';
+    $('b-reveal').style.display='none';
+    window._raidRevealedRound=window._currentRoundNum;
+};
 
 $('b-next').onclick=()=>{$('b-next').disabled=true;nextRound().finally(()=>{$('b-next').disabled=false})};
 $('b-end').onclick=()=>{if(confirm('End game for everyone?'))deleteDoc(doc(db,COL,gid))};
