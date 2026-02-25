@@ -364,7 +364,7 @@
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import{getAuth,signInAnonymously}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import{getFirestore,doc,getDoc,setDoc,updateDoc,onSnapshot,deleteDoc,serverTimestamp,arrayUnion,arrayRemove}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import{getFirestore,doc,getDoc,setDoc,updateDoc,onSnapshot,deleteDoc,serverTimestamp,arrayUnion,arrayRemove,collection,getDocs}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 const app=initializeApp({
     apiKey:"AIzaSyAJqlQLiyN4Ddo2tNEDalfbcJ8eIr0oc3I",
@@ -723,6 +723,23 @@ function show(id){
 }
 
 function genId(){return Math.random().toString().substring(2,6)}
+
+// Auto-cleanup: delete games older than 6 hours
+async function cleanupStaleGames(){
+    try{
+        const sixHoursAgo=Date.now()-6*60*60*1000;
+        const snap=await getDocs(collection(db,COL));
+        let deleted=0;
+        for(const d of snap.docs){
+            const data=d.data();
+            if(data.createdAt&&data.createdAt.toMillis&&data.createdAt.toMillis()<sixHoursAgo){
+                await deleteDoc(doc(db,COL,d.id));
+                deleted++;
+            }
+        }
+        if(deleted>0)console.log('Cleaned up '+deleted+' stale games');
+    }catch(e){console.log('Cleanup skipped:',e.message)}
+}
 
 // ── FIREBASE ACTIONS ──
 
@@ -1112,8 +1129,24 @@ $('xbtn').onclick=async()=>{
     cleanup();
 };
 
-$('b-rc-y').onclick=()=>{const id=$('rc-id').textContent;if(id){$('S1').classList.remove('on');joinGame(id,false)}};
-$('b-rc-n').onclick=()=>{localStorage.removeItem('rmGid');$('S1').classList.remove('on');show('S0')};
+$('b-rc-y').onclick=async()=>{
+    const id=$('rc-id').textContent;
+    if(!id)return;
+    $('S1').classList.remove('on');
+    try{
+        const snap=await getDoc(doc(db,COL,id));
+        if(!snap.exists()){
+            localStorage.removeItem('rmGid');
+            show('S0');
+            return;
+        }
+        joinGame(id,false);
+    }catch(e){
+        localStorage.removeItem('rmGid');
+        show('S0');
+    }
+};
+$('b-rc-n').onclick=()=>{localStorage.removeItem('rmGid');localStorage.removeItem('rmUid');$('S1').classList.remove('on');show('S0')};
 
 document.addEventListener('visibilitychange',async()=>{
     if(!document.hidden&&gid){
@@ -1178,10 +1211,18 @@ signInAnonymously(auth).then(async(c)=>{
     let s=localStorage.getItem('rmUid');
     if(!s){s=c.user.uid;localStorage.setItem('rmUid',s)}
     uid=s;
+    // Run stale game cleanup in background
+    cleanupStaleGames();
     const last=localStorage.getItem('rmGid');
     if(last){
         try{const snap=await getDoc(doc(db,COL,last));
-        if(snap.exists()&&snap.data().status!=='game_over'){$('rc-id').textContent=last;show('S1');return}}catch(e){}
+        if(snap.exists()){
+            const d=snap.data();
+            const inGame=d.players&&d.players.some(p=>p.id===uid);
+            if(d.status!=='game_over'&&inGame){
+                $('rc-id').textContent=last;show('S1');return;
+            }
+        }}catch(e){}
         localStorage.removeItem('rmGid');
     }
     show('S0');
