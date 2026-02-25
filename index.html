@@ -234,10 +234,10 @@
     </div>
 </div>
 
-<!-- RECONNECT -->
+<!-- RECONNECT MODAL — independent overlay, not part of screen system -->
 
-<div id="S1" class="s" style="position:fixed;inset:0;z-index:50;background:rgba(10,10,15,.96)">
-    <div class="c" style="text-align:center">
+<div id="S1" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg);padding:16px;flex-direction:column;align-items:center;justify-content:center">
+    <div class="c" style="text-align:center;max-width:400px;width:100%">
         <div class="t-section mb3">Reconnect?</div>
         <p class="t-m mb4">Found session <span id="rc-id" class="msgr-name" style="font-size:.9rem"></span></p>
         <button id="b-rc-y" class="btn btn-p mb2">Yes, Reconnect</button>
@@ -711,16 +711,20 @@ function rndSys(n,lang){
 let uid,gid,unsub,ackTimer,ackInterval;
 const $=id=>document.getElementById(id);
 
-const screens=['S0','S1','S2','S3','S4','S5','S6','S7','S8'];
+const screens=['S0','S2','S3','S4','S5','S6','S7','S8'];
 function show(id){
+    // Hide reconnect modal if showing a regular screen
+    $('S1').style.display='none';
     for(let i=0;i<screens.length;i++){
         const el=$(screens[i]);
         if(screens[i]===id)el.classList.add('on');
         else el.classList.remove('on');
     }
-    const noX=['S0','S2','S1'];
+    const noX=['S0','S2'];
     $('xbtn').style.display=noX.includes(id)?'none':'block';
 }
+function showReconnect(){$('S1').style.display='flex';}
+function hideReconnect(){$('S1').style.display='none';}
 
 function genId(){return Math.random().toString().substring(2,6)}
 
@@ -1132,7 +1136,7 @@ $('xbtn').onclick=async()=>{
 $('b-rc-y').onclick=async()=>{
     const id=$('rc-id').textContent;
     if(!id)return;
-    $('S1').classList.remove('on');
+    hideReconnect();
     try{
         const snap=await getDoc(doc(db,COL,id));
         if(!snap.exists()){
@@ -1146,7 +1150,7 @@ $('b-rc-y').onclick=async()=>{
         show('S0');
     }
 };
-$('b-rc-n').onclick=()=>{localStorage.removeItem('rmGid');localStorage.removeItem('rmUid');$('S1').classList.remove('on');show('S0')};
+$('b-rc-n').onclick=()=>{localStorage.removeItem('rmGid');localStorage.removeItem('rmUid');hideReconnect();show('S0')};
 
 document.addEventListener('visibilitychange',async()=>{
     if(!document.hidden&&gid){
@@ -1220,7 +1224,7 @@ signInAnonymously(auth).then(async(c)=>{
             const d=snap.data();
             const inGame=d.players&&d.players.some(p=>p.id===uid);
             if(d.status!=='game_over'&&inGame){
-                $('rc-id').textContent=last;show('S1');return;
+                $('rc-id').textContent=last;showReconnect();return;
             }
         }}catch(e){}
         localStorage.removeItem('rmGid');
