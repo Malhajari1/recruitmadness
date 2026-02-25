@@ -3,6 +3,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -36,9 +38,9 @@
         }
 
 ```
-    /* Screens — instant swap, no transition overhead */
-    .s{display:none;width:100%;max-width:400px;position:relative;z-index:1;flex-direction:column;align-items:center;justify-content:center}
-    .s.on{display:flex}
+    /* Screens — instant swap */
+    .s{display:none !important;width:100%;max-width:400px;position:relative;z-index:1;flex-direction:column;align-items:center;justify-content:center}
+    .s.on{display:flex !important}
 
     /* Card */
     .c{
@@ -247,7 +249,7 @@
 
 <!-- LOBBY -->
 
-<div id="S2" class="s">
+<div id="S2" class="s" style="display:none">
     <div class="c">
         <div class="t-section mb2">Game Lobby</div>
         <p class="t-m mb2 t-sm">Share the Game ID with friends!</p>
@@ -266,7 +268,7 @@
 
 <!-- WORD SUBMISSION -->
 
-<div id="S3" class="s">
+<div id="S3" class="s" style="display:none">
     <div class="c">
         <div class="t-section mb1">Submit Your Projects</div>
         <p class="t-m t-sm mb3">Enter 2 project ideas for the pool.</p>
@@ -285,7 +287,7 @@
 
 <!-- ROLE REVEAL -->
 
-<div id="S4" class="s">
+<div id="S4" class="s" style="display:none">
     <div class="c" style="text-align:center">
         <div class="rbadge mb3">Round <span id="rv-rn">1</span> / <span id="rv-tr">6</span></div>
         <div class="t-section mb4">Your Role</div>
@@ -303,7 +305,7 @@
 
 <!-- MESSENGER SCREEN -->
 
-<div id="S5" class="s">
+<div id="S5" class="s" style="display:none">
     <div class="c" style="text-align:center">
         <div class="rbadge mb3">Round <span id="m-rn">1</span> / <span id="m-tr">6</span></div>
         <div class="t-section mb3">You Are the Messenger!</div>
@@ -320,7 +322,7 @@
 
 <!-- WAITING FOR MESSENGER -->
 
-<div id="S6" class="s">
+<div id="S6" class="s" style="display:none">
     <div class="c" style="text-align:center">
         <div class="rbadge mb3">Round <span id="w-rn">1</span> / <span id="w-tr">6</span></div>
         <div class="t-section mb3">Waiting for Messenger</div>
@@ -331,7 +333,7 @@
 
 <!-- DISCUSSION -->
 
-<div id="S7" class="s">
+<div id="S7" class="s" style="display:none">
     <div class="c" style="text-align:center">
         <div class="rbadge mb2">Round <span id="d-rn">1</span> / <span id="d-tr">6</span></div>
         <div class="t-section mb1">Discussion Phase</div>
@@ -346,7 +348,7 @@
 
 <!-- GAME OVER -->
 
-<div id="S8" class="s">
+<div id="S8" class="s" style="display:none">
     <div class="c" style="text-align:center">
         <div class="t-title" style="font-size:1.3rem">Game Over</div>
         <p class="t-m mt3 mb4">Thanks for playing!</p>
@@ -713,12 +715,16 @@ const $=id=>document.getElementById(id);
 
 const screens=['S0','S2','S3','S4','S5','S6','S7','S8'];
 function show(id){
-    // Hide reconnect modal if showing a regular screen
     $('S1').style.display='none';
     for(let i=0;i<screens.length;i++){
         const el=$(screens[i]);
-        if(screens[i]===id)el.classList.add('on');
-        else el.classList.remove('on');
+        if(screens[i]===id){
+            el.classList.add('on');
+            el.style.display='flex';
+        }else{
+            el.classList.remove('on');
+            el.style.display='none';
+        }
     }
     const noX=['S0','S2'];
     $('xbtn').style.display=noX.includes(id)?'none':'block';
