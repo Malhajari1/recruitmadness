@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#0a0a0f">
+    <meta name="theme-color" content="#f8f9fa">
     <title>Recruit Madness</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,24 +24,16 @@
         html,body{height:100%;width:100%;overflow-x:hidden}
         body{
             font-family:var(--font-b);background:var(--bg);color:var(--text);
+            background-image:radial-gradient(circle,rgba(29,53,87,.04) 1px,transparent 1px);
+            background-size:24px 24px;
             display:flex;flex-direction:column;align-items:center;justify-content:center;
             padding:16px;-webkit-tap-highlight-color:transparent;
             -webkit-font-smoothing:antialiased;
         }
-        body::after{
-            content:'';position:fixed;bottom:0;left:0;right:0;height:120px;
-            background:linear-gradient(to top,rgba(29,53,87,.06),transparent);
-            pointer-events:none;z-index:0;
-        }
-        /* Subtle dot pattern */
-        body::before{
-            content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-            background-image:radial-gradient(circle,rgba(29,53,87,.04) 1px,transparent 1px);
-            background-size:24px 24px;
-        }
+        /* No pseudo-elements that could block touches */
 
         /* Screens — instant swap */
-        .s{display:none !important;width:100%;max-width:400px;position:relative;z-index:1;flex-direction:column;align-items:center;justify-content:center}
+        .s{display:none !important;width:100%;max-width:400px;position:relative;z-index:10;flex-direction:column;align-items:center;justify-content:center}
         .s.on{display:flex !important}
 
         /* Card */
@@ -70,6 +62,7 @@
             color:var(--cyan);font-family:var(--font-d);font-size:.75rem;font-weight:700;
             text-transform:uppercase;letter-spacing:.08em;cursor:pointer;border-radius:8px;
             -webkit-appearance:none;appearance:none;touch-action:manipulation;
+            position:relative;z-index:5;
         }
         .btn:active{background:var(--cyan);color:#fff;transform:scale(.97)}
         .btn:disabled{border-color:#dee2e6;color:#adb5bd;background:#f8f9fa;pointer-events:none}
@@ -713,6 +706,7 @@ $('i-join').onkeypress=e=>{if(e.key==='Enter')$('b-join').click()};
 // Disable until auth ready
 $('b-create').disabled=true;
 $('b-join').disabled=true;
+$('b-create').textContent='Connecting...';
 $('b-add').onclick=addPlayer;
 $('i-name').onkeypress=e=>{if(e.key==='Enter')addPlayer()};
 $('b-start').onclick=startGame;
@@ -900,6 +894,7 @@ signInAnonymously(auth).then(async(c)=>{
     // Auth ready — enable buttons
     $('b-create').disabled=false;
     $('b-join').disabled=false;
+    $('b-create').textContent='Create Room';
     // Run stale game cleanup in background
     cleanupStaleGames();
     const last=localStorage.getItem('rmGid');
@@ -915,7 +910,7 @@ signInAnonymously(auth).then(async(c)=>{
         localStorage.removeItem('rmGid');
     }
     show('S0');
-}).catch(e=>{console.error(e);alert("Could not connect. Please refresh.")});
+}).catch(e=>{console.error('Auth failed:',e);$('b-create').textContent='Connection Failed';alert("Could not connect: "+e.message+". Please refresh.")});
 
 </script>
 </body>
