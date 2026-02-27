@@ -273,10 +273,11 @@
 <!-- WORD SUBMISSION -->
 <div id="S3" class="s" style="display:none">
     <div class="c">
-        <div class="t-section mb1">Submit Your Projects</div>
-        <p class="t-m t-sm mb3">Enter 2 project ideas for the pool.</p>
+        <div id="w-round-info" class="rbadge mb2" style="display:none">Round <span id="w-batch">1</span></div>
+        <div class="t-section mb1">Submit Your Project</div>
+        <p class="t-m t-sm mb3" id="w-subtitle">Enter 1 project idea for the pool.</p>
         <div id="my-words" class="fw mb2"></div>
-        <p class="wcount mb3"><span id="w-cnt">0</span>/2 submitted</p>
+        <p class="wcount mb3"><span id="w-cnt">0</span>/1 submitted</p>
         <div id="w-inp-area">
             <input type="text" id="i-word" class="inp mb2" placeholder="Type a project..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
             <button id="b-word" class="btn btn-p">Add Project</button>
@@ -291,7 +292,7 @@
 <!-- ROLE REVEAL -->
 <div id="S4" class="s" style="display:none">
     <div class="c" style="text-align:center">
-        <div class="rbadge mb3">Round <span id="rv-rn">1</span> / <span id="rv-tr">6</span></div>
+        <div class="rbadge mb3">Round <span id="rv-rn">1</span></div>
         <div class="t-section mb4">The Rumor Is...</div>
         <p class="t-m t-sm mb4">Hide your screen from others!</p>
         <div class="wbox" style="position:relative;">
@@ -308,7 +309,7 @@
 <!-- MESSENGER SCREEN -->
 <div id="S5" class="s" style="display:none">
     <div class="c" style="text-align:center">
-        <div class="rbadge mb3">Round <span id="m-rn">1</span> / <span id="m-tr">6</span></div>
+        <div class="rbadge mb3">Round <span id="m-rn">1</span></div>
         <div class="t-section mb3">You Are the Messenger!</div>
         <p class="t-m t-sm mb4">Read the project aloud to the group.</p>
         <div class="wbox">
@@ -324,7 +325,7 @@
 <!-- WAITING FOR MESSENGER -->
 <div id="S6" class="s" style="display:none">
     <div class="c" style="text-align:center">
-        <div class="rbadge mb3">Round <span id="w-rn">1</span> / <span id="w-tr">6</span></div>
+        <div class="rbadge mb3">Round <span id="w-rn">1</span></div>
         <div class="t-section mb3">Waiting for Messenger</div>
         <p class="t-m"><span class="msgr-name" id="w-mname">Someone</span> is reading the project<span class="dots"><span>.</span><span>.</span><span>.</span></span></p>
         <p class="t-m t-sm mt3">Listen carefully!</p>
@@ -334,7 +335,7 @@
 <!-- DISCUSSION -->
 <div id="S7" class="s" style="display:none">
     <div class="c" style="text-align:center">
-        <div class="rbadge mb2">Round <span id="d-rn">1</span> / <span id="d-tr">6</span></div>
+        <div class="rbadge mb2">Round <span id="d-rn">1</span></div>
         <div class="t-section mb1">Discussion Phase</div>
         <p class="t-m t-sm mb4">Find the mole! Who doesn't know the project?</p>
         <div id="d-plist" class="fw mb4"></div>
@@ -376,341 +377,343 @@ const app=initializeApp({
 const db=getFirestore(app),auth=getAuth(app);
 const COL="recruit_madness_games";
 
-// No system word pools needed — players provide all projects
-
 let uid,gid,unsub,ackTimer,ackInterval;
 const $=id=>document.getElementById(id);
 
+/* ─── LOCAL STATE ─── */
+let _snapData=null;      // latest snapshot — single source of truth
+let _lastRound=0;        // track round changes
+let _lastStatus='';      // track status changes
+let _roleRevealed=false; // eye tapped this round?
+let _busy={};            // operation guards
+
+function guard(key,fn){
+    if(_busy[key])return Promise.resolve();
+    _busy[key]=true;
+    return fn().catch(e=>console.error(key,e)).finally(()=>{_busy[key]=false});
+}
+
+/* ─── SCREENS ─── */
 const screens=['S0','S2','S3','S4','S5','S6','S7','S8'];
 function show(id){
     $('S1').style.display='none';
-    for(let i=0;i<screens.length;i++){
-        const el=$(screens[i]);
-        if(screens[i]===id){
-            el.classList.add('on');
-            el.style.display='flex';
-        }else{
-            el.classList.remove('on');
-            el.style.display='none';
-        }
-    }
-    const noX=['S0','S2'];
-    $('xbtn').style.display=noX.includes(id)?'none':'block';
+    screens.forEach(s=>{
+        const el=$(s);
+        if(s===id){el.classList.add('on');el.style.display='flex'}
+        else{el.classList.remove('on');el.style.display='none'}
+    });
+    $('xbtn').style.display=['S0','S2'].includes(id)?'none':'block';
 }
-function showReconnect(){$('S1').style.display='flex';}
-function hideReconnect(){$('S1').style.display='none';}
 
+/* ─── HELPERS ─── */
 function genId(){return Math.random().toString().substring(2,6)}
-
-// Auto-cleanup: delete games older than 6 hours
-async function cleanupStaleGames(){
-    try{
-        const sixHoursAgo=Date.now()-6*60*60*1000;
-        const snap=await getDocs(collection(db,COL));
-        let deleted=0;
-        for(const d of snap.docs){
-            const data=d.data();
-            if(data.createdAt&&data.createdAt.toMillis&&data.createdAt.toMillis()<sixHoursAgo){
-                await deleteDoc(doc(db,COL,d.id));
-                deleted++;
-            }
-        }
-        if(deleted>0)console.log('Cleaned up '+deleted+' stale games');
-    }catch(e){console.log('Cleanup skipped:',e.message)}
-}
-
-// ── FIREBASE ACTIONS ──
-
-async function createGame(){
-    if(!uid){alert("Still connecting... try again in a moment.");return}
-    gid=genId();
-    try{
-        await setDoc(doc(db,COL,gid),{
-        hostId:uid,status:'lobby',players:[],
-        wordSubmissions:{},wordPool:[],playerWords:[],
-        roundOrder:[],raidRounds:[],currentRound:0,totalRounds:0,
-        currentMessengerId:'',currentWord:'',
-        moleId:'',isPoliceRaid:false,
-        roleAcknowledgements:[],
-        createdAt:serverTimestamp()
-    });
-    joinGame(gid,true);
-    }catch(e){console.error('Create failed:',e);alert("Failed to create game. Check connection.");}
-}
-
-async function joinGame(id,isNew){
-    if(!uid){alert("Still connecting... try again in a moment.");return}
-    const ref=doc(db,COL,id);
-    let snap;
-    try{snap=await getDoc(ref)}catch(e){alert("Connection error.");return}
-    if(!snap.exists()){alert("Game not found!");localStorage.removeItem('rmGid');show('S0');return}
-    const gameData=snap.data();
-    if(isNew&&gameData.status!=='lobby'){alert("Game already started.");return}
-    gid=id;
-    localStorage.setItem('rmGid',gid);
-    $('pid-t').textContent=gid;
-    $('pid').style.display='block';
-    $('cstat').style.display='block';
-    if(unsub)unsub();
-    unsub=onSnapshot(ref,(s)=>{
-        const d=s.data();
-        if(!d){cleanup();alert("Game ended.");return}
-        $('cstat').textContent='● ONLINE';$('cstat').classList.remove('dc');
-        render(d);
-    },(e)=>{
-        console.error(e);
-        $('cstat').textContent='● OFFLINE';$('cstat').classList.add('dc');
-    });
-}
+function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.random()*i|0;[b[i],b[j]]=[b[j],b[i]]}return b}
+function clearAckTimer(){if(ackTimer){clearTimeout(ackTimer);ackTimer=null}if(ackInterval){clearInterval(ackInterval);ackInterval=null}}
 
 function cleanup(){
     if(unsub)unsub();unsub=null;
     clearAckTimer();
     localStorage.removeItem('rmGid');
-    gid=null;
+    gid=null;_snapData=null;_lastRound=0;_lastStatus='';_roleRevealed=false;_busy={};
     $('pid').style.display='none';$('cstat').style.display='none';$('xbtn').style.display='none';
     show('S0');
 }
 
-async function addPlayer(){
+async function cleanupStaleGames(){
+    try{
+        const cutoff=Date.now()-6*60*60*1000;
+        const snap=await getDocs(collection(db,COL));
+        for(const d of snap.docs){
+            const data=d.data();
+            if(data.createdAt&&data.createdAt.toMillis&&data.createdAt.toMillis()<cutoff)
+                await deleteDoc(doc(db,COL,d.id));
+        }
+    }catch(e){}
+}
+
+/* ─── FIREBASE ACTIONS (all guarded) ─── */
+
+function createGame(){
+    if(!uid){alert("Still connecting...");return}
+    guard('create',async()=>{
+        gid=genId();
+        await setDoc(doc(db,COL,gid),{
+            hostId:uid,status:'lobby',players:[],
+            wordSubmissions:{},wordPool:[],playerWords:[],
+            roundOrder:[],raidRounds:[],
+            batchNumber:0,batchRoundIndex:0,batchRounds:0,overallRound:0,
+            currentMessengerId:'',currentWord:'',
+            moleId:'',isPoliceRaid:false,roleAcknowledgements:[],
+            createdAt:serverTimestamp()
+        });
+        connectToGame(gid);
+    });
+}
+
+function connectToGame(id){
+    gid=id;
+    _lastStatus='';_lastRound=0;_roleRevealed=false;_busy={};_snapData=null;
+    localStorage.setItem('rmGid',gid);
+    $('pid-t').textContent=gid;$('pid').style.display='block';$('cstat').style.display='block';
+    if(unsub)unsub();
+    unsub=onSnapshot(doc(db,COL,gid),s=>{
+        const d=s.data();
+        if(!d){cleanup();alert("Game ended.");return}
+        $('cstat').textContent='● ONLINE';$('cstat').classList.remove('dc');
+        _snapData=d;
+        render(d);
+    },e=>{
+        console.error(e);
+        $('cstat').textContent='● OFFLINE';$('cstat').classList.add('dc');
+    });
+}
+
+async function joinGame(id,isNew){
+    if(!uid){alert("Still connecting...");return}
+    let snap;
+    try{snap=await getDoc(doc(db,COL,id))}catch(e){alert("Connection error.");return}
+    if(!snap.exists()){alert("Game not found!");localStorage.removeItem('rmGid');show('S0');return}
+    if(isNew&&snap.data().status!=='lobby'){alert("Game already started.");return}
+    connectToGame(id);
+}
+
+function addPlayer(){
     const name=$('i-name').value.trim();
     if(!name)return alert('Enter a name.');
     if(name.length>15)return alert('Max 15 characters.');
-    const ref=doc(db,COL,gid);
-    const snap=await getDoc(ref);
-    const pl=snap.data().players||[];
-    if(pl.some(p=>p.name.toLowerCase()===name.toLowerCase()))return alert('Name taken.');
-    if(pl.length>=10)return alert('Room full.');
-    await updateDoc(ref,{players:arrayUnion({id:uid,name})});
-}
-
-async function startGame(){
-    const ref=doc(db,COL,gid);
-    const snap=await getDoc(ref);
-    if(snap.data().players.length<3)return alert('Need 3+ players.');
-    await updateDoc(ref,{status:'submit_words',wordSubmissions:{},wordPool:[]});
-}
-
-async function submitWord(w){
-    const ref=doc(db,COL,gid);
-    const snap=await getDoc(ref);
-    const subs=snap.data().wordSubmissions||{};
-    const my=subs[uid]||[];
-    if(my.length>=2)return;
-    my.push(w);subs[uid]=my;
-    await updateDoc(ref,{wordSubmissions:subs});
-}
-
-async function finalizePool(){
-    const ref=doc(db,COL,gid);
-    const snap=await getDoc(ref);
-    const d=snap.data(),subs=d.wordSubmissions||{};
-    let playerWords=[];
-    Object.values(subs).forEach(w=>{playerWords=playerWords.concat(w)});
-    // Shuffle player words only — no system words
-    let all=[...playerWords];
-    for(let i=all.length-1;i>0;i--){const j=Math.random()*i|0;[all[i],all[j]]=[all[j],all[i]]}
-    
-    const tot=d.players.length*2;
-    const ids=d.players.map(p=>p.id);
-    const s1=[...ids],s2=[...ids];
-    for(let i=s1.length-1;i>0;i--){const j=Math.random()*i|0;[s1[i],s1[j]]=[s1[j],s1[i]]}
-    for(let i=s2.length-1;i>0;i--){const j=Math.random()*i|0;[s2[i],s2[j]]=[s2[j],s2[i]]}
-    const ro=[...s1,...s2];
-    
-    // Pre-decide which rounds are police raids (~25% chance per round)
-    const raidRounds=[];
-    for(let i=0;i<tot;i++){if(Math.random()<0.25)raidRounds.push(i+1)}
-    
-    // Pick first word + assign mole
-    const firstWord=all[0]||'Mystery';
-    const isRaid=raidRounds.includes(1);
-    const moleId=isRaid?'__RAID__':d.players[Math.floor(Math.random()*d.players.length)].id;
-    const messengerId=ro[0];
-    
-    await updateDoc(ref,{
-        wordPool:all,playerWords:playerWords,totalRounds:tot,
-        raidRounds:raidRounds,
-        currentRound:1,roundOrder:ro,
-        currentMessengerId:messengerId,
-        currentWord:firstWord,
-        moleId:moleId,
-        isPoliceRaid:isRaid,
-        roleAcknowledgements:[],
-        status:'role_reveal'
+    guard('addPlayer',async()=>{
+        const snap=await getDoc(doc(db,COL,gid));
+        const pl=snap.data().players||[];
+        if(pl.some(p=>p.name.toLowerCase()===name.toLowerCase()))return alert('Name taken.');
+        if(pl.length>=10)return alert('Room full.');
+        await updateDoc(doc(db,COL,gid),{players:arrayUnion({id:uid,name})});
     });
 }
 
-async function acknowledgeRole(){
-    const ref=doc(db,COL,gid);
-    await updateDoc(ref,{roleAcknowledgements:arrayUnion(uid)});
+function startGame(){
+    guard('start',async()=>{
+        const snap=await getDoc(doc(db,COL,gid));
+        if(snap.data().players.length<3)return alert('Need 3+ players.');
+        await updateDoc(doc(db,COL,gid),{
+            status:'submit_words',wordSubmissions:{},
+            batchNumber:1,overallRound:0,
+            wordPool:[],playerWords:[]
+        });
+    });
 }
 
-function clearAckTimer(){
-    if(ackTimer){clearTimeout(ackTimer);ackTimer=null;}
-    if(ackInterval){clearInterval(ackInterval);ackInterval=null;}
+function submitWord(w){
+    guard('word',async()=>{
+        const snap=await getDoc(doc(db,COL,gid));
+        const subs=snap.data().wordSubmissions||{};
+        const my=subs[uid]||[];
+        if(my.length>=1)return; // 1 word per batch
+        my.push(w);subs[uid]=my;
+        await updateDoc(doc(db,COL,gid),{wordSubmissions:subs});
+    });
 }
 
-function startAckTimer(){
+function finalizePool(){
+    guard('finalize',async()=>{
+        const ref=doc(db,COL,gid),snap=await getDoc(ref),d=snap.data();
+        if(d.status!=='submit_words')return;
+        const subs=d.wordSubmissions||{};
+        let batchWords=[];Object.values(subs).forEach(w=>{batchWords=batchWords.concat(w)});
+        const all=shuffle(batchWords);
+        const batchRounds=all.length; // 1 word per player = player count rounds
+        const overallRound=d.overallRound||0;
+        const ro=shuffle(d.players.map(p=>p.id));
+
+        // Police raid: max 1 per batch, 15% chance, never first or last round of batch
+        const rr=[];
+        if(batchRounds>=4&&Math.random()<0.15){
+            const el=[];for(let i=2;i<batchRounds;i++)el.push(i);
+            if(el.length)rr.push(el[Math.floor(Math.random()*el.length)]);
+        }
+        const w0=all[0]||'Mystery',raid=rr.includes(1);
+        const mole=raid?'__RAID__':d.players[Math.floor(Math.random()*d.players.length)].id;
+        await updateDoc(ref,{
+            wordPool:all,batchRounds,raidRounds:rr,
+            batchRoundIndex:1,overallRound:overallRound+1,
+            roundOrder:ro,currentMessengerId:ro[0],
+            currentWord:w0,moleId:mole,isPoliceRaid:raid,
+            roleAcknowledgements:[],status:'role_reveal'
+        });
+    });
+}
+
+function acknowledgeRole(){
     clearAckTimer();
-    let secs=20;
-    $('ack-secs').textContent=secs;
-    $('ack-timer').style.display='block';
-    ackInterval=setInterval(()=>{
-        secs--;$('ack-secs').textContent=secs;
-        if(secs<=0)clearInterval(ackInterval);
-    },1000);
-    ackTimer=setTimeout(()=>acknowledgeRole(),20000);
-}
-
-async function messengerDone(){
-    await updateDoc(doc(db,COL,gid),{status:'discussion'});
-}
-
-async function nextRound(){
-    const ref=doc(db,COL,gid);
-    const snap=await getDoc(ref);
-    const d=snap.data(),next=d.currentRound+1;
-    if(next>d.totalRounds){await deleteDoc(ref);return}
-    
-    const nextWord=d.wordPool[next-1]||d.wordPool[Math.floor(Math.random()*d.wordPool.length)]||'Mystery';
-    const raidRounds=d.raidRounds||[];
-    const isRaid=raidRounds.includes(next);
-    const moleId=isRaid?'__RAID__':d.players[Math.floor(Math.random()*d.players.length)].id;
-    const messengerId=d.roundOrder[next-1];
-    
-    await updateDoc(ref,{
-        currentRound:next,
-        currentMessengerId:messengerId,
-        currentWord:nextWord,
-        moleId:moleId,
-        isPoliceRaid:isRaid,
-        roleAcknowledgements:[],
-        status:'role_reveal'
+    guard('ack',async()=>{
+        await updateDoc(doc(db,COL,gid),{roleAcknowledgements:arrayUnion(uid)});
     });
 }
 
-// ── RENDER ──
+function transitionToMessenger(){
+    guard('toMsg',async()=>{
+        const snap=await getDoc(doc(db,COL,gid));
+        if(snap.data().status==='role_reveal')
+            await updateDoc(doc(db,COL,gid),{status:'messenger_reveal'});
+    });
+}
+
+function messengerDone(){
+    guard('msgDone',async()=>{
+        const snap=await getDoc(doc(db,COL,gid));
+        if(snap.data().status==='messenger_reveal')
+            await updateDoc(doc(db,COL,gid),{status:'discussion'});
+    });
+}
+
+function nextRound(){
+    guard('nextRnd',async()=>{
+        const ref=doc(db,COL,gid),snap=await getDoc(ref),d=snap.data();
+        if(d.status!=='discussion')return;
+        const bri=d.batchRoundIndex||1;
+        const batchRounds=d.batchRounds||0;
+        const overallRound=d.overallRound||1;
+
+        if(bri>=batchRounds){
+            // Batch exhausted → new submission round
+            await updateDoc(ref,{
+                status:'submit_words',
+                wordSubmissions:{},
+                batchNumber:(d.batchNumber||1)+1
+            });
+            return;
+        }
+
+        // Next round within batch
+        const next=bri+1;
+        const w=d.wordPool[next-1]||'Mystery';
+        const raid=(d.raidRounds||[]).includes(next);
+        const mole=raid?'__RAID__':d.players[Math.floor(Math.random()*d.players.length)].id;
+        const ro=d.roundOrder||[];
+        const msgIdx=(next-1)%ro.length;
+        await updateDoc(ref,{
+            batchRoundIndex:next,overallRound:overallRound+1,
+            currentMessengerId:ro[msgIdx],
+            currentWord:w,moleId:mole,isPoliceRaid:raid,
+            roleAcknowledgements:[],status:'role_reveal'
+        });
+    });
+}
+
+/* ─── RENDER (PURE — no Firebase writes, reads from snapshot only) ─── */
 
 function render(d){
-    const st=d.status,isHost=uid===d.hostId,inGame=d.players&&d.players.some(p=>p.id===uid);
-    
+    const st=d.status,isHost=uid===d.hostId;
+    const inGame=d.players&&d.players.some(p=>p.id===uid);
+    const curRound=d.overallRound||0;
+    const roundChanged=curRound!==_lastRound;
+    const statusChanged=st!==_lastStatus;
+
+    if(roundChanged){_roleRevealed=false;_lastRound=curRound;clearAckTimer()}
+    _lastStatus=st;
+
+    // LOBBY
     if(st==='lobby'){
         show('S2');
-        $('id-txt').textContent=gid;
-        $('p-cnt').textContent=d.players.length;
+        $('id-txt').textContent=gid;$('p-cnt').textContent=d.players.length;
         const pl=$('p-list');pl.innerHTML='';
         d.players.forEach(p=>{
             const t=document.createElement('div');
             t.className='ptag'+(p.id===d.hostId?' host':'');
-            t.textContent=p.name.toUpperCase();
-            pl.appendChild(t);
+            t.textContent=p.name.toUpperCase();pl.appendChild(t);
         });
         $('b-start').disabled=!isHost;
-        $('i-name').disabled=inGame;
-        $('b-add').disabled=inGame;
+        $('i-name').disabled=inGame;$('b-add').disabled=inGame;
     }
+    // SUBMIT WORDS
     else if(st==='submit_words'){
         show('S3');
+        const batch=d.batchNumber||1;
+        if(batch>1){
+            $('w-round-info').style.display='block';
+            $('w-batch').textContent='Batch '+batch;
+            $('w-subtitle').textContent='Submit a new project for the next rounds.';
+        }else{
+            $('w-round-info').style.display='none';
+            $('w-subtitle').textContent='Enter 1 project idea for the pool.';
+        }
         const subs=d.wordSubmissions||{},my=subs[uid]||[];
         const mw=$('my-words');mw.innerHTML='';
         my.forEach(w=>{const t=document.createElement('div');t.className='wtag';t.textContent=w;mw.appendChild(t)});
         $('w-cnt').textContent=my.length;
-        if(my.length>=2){
-            $('w-inp-area').style.display='none';
-            $('w-wait').style.display='block';
-            const done=Object.values(subs).filter(w=>w.length>=2).length;
+        if(my.length>=1){
+            $('w-inp-area').style.display='none';$('w-wait').style.display='block';
+            const done=Object.values(subs).filter(w=>w.length>=1).length;
             $('w-prog').textContent=done+'/'+d.players.length+' players ready';
             if(done>=d.players.length&&isHost)finalizePool();
-        }else{
-            $('w-inp-area').style.display='block';
-            $('w-wait').style.display='none';
-        }
+        }else{$('w-inp-area').style.display='block';$('w-wait').style.display='none'}
     }
+    // ROLE REVEAL
     else if(st==='role_reveal'){
         show('S4');
-        $('rv-rn').textContent=d.currentRound;
-        $('rv-tr').textContent=d.totalRounds;
-        
+        $('rv-rn').textContent=d.overallRound||1;
         const hasAckd=d.roleAcknowledgements&&d.roleAcknowledgements.includes(uid);
-        
         if(hasAckd){
-            // Waiting for others
             clearAckTimer();
             $('role-overlay').classList.add('off');
             $('role-content').style.visibility='visible';
             $('role-content').innerHTML='<p class="t-m">Waiting for others<span class="dots"><span>.</span><span>.</span><span>.</span></span></p>';
-            $('b-ack').style.display='none';
-            $('ack-timer').style.display='none';
-        }else{
-            // Show reveal overlay
+            $('b-ack').style.display='none';$('ack-timer').style.display='none';
+        }else if(!_roleRevealed){
+            // Fresh — show eye overlay
             $('role-overlay').classList.remove('off');
             $('role-content').style.visibility='hidden';
-            $('b-ack').style.display='none';
-            $('ack-timer').style.display='none';
+            $('role-content').innerHTML='';
+            $('b-ack').style.display='none';$('ack-timer').style.display='none';
         }
-        
-        // Check if all acknowledged → move to messenger
-        if(d.roleAcknowledgements&&d.roleAcknowledgements.length>=d.players.length){
-            if(isHost){
-                updateDoc(doc(db,COL,gid),{status:'messenger_reveal'});
-            }
-        }
+        // else: _roleRevealed but not acked — leave the role content visible
+
+        // Host: check all acknowledged → transition
+        if(d.roleAcknowledgements&&d.roleAcknowledgements.length>=d.players.length&&isHost)
+            transitionToMessenger();
     }
+    // MESSENGER REVEAL
     else if(st==='messenger_reveal'){
         if(uid===d.currentMessengerId&&inGame){
             show('S5');
-            $('m-rn').textContent=d.currentRound;
-            $('m-tr').textContent=d.totalRounds;
-            $('r-word').textContent=d.currentWord;
-            $('r-word').dir='auto';
-            $('w-overlay').classList.remove('off');
-            $('r-word').style.visibility='hidden';
-            $('b-read').style.display='none';
+            $('m-rn').textContent=d.overallRound||1;
+            $('r-word').textContent=d.currentWord;$('r-word').dir='auto';
+            if(statusChanged){
+                $('w-overlay').classList.remove('off');
+                $('r-word').style.visibility='hidden';
+                $('b-read').style.display='none';
+            }
         }else{
             show('S6');
-            $('w-rn').textContent=d.currentRound;
-            $('w-tr').textContent=d.totalRounds;
+            $('w-rn').textContent=d.overallRound||1;
             const m=d.players.find(p=>p.id===d.currentMessengerId);
             $('w-mname').textContent=m?m.name:'Someone';
         }
     }
+    // DISCUSSION
     else if(st==='discussion'){
         show('S7');
-        $('d-rn').textContent=d.currentRound;
-        $('d-tr').textContent=d.totalRounds;
+        $('d-rn').textContent=d.overallRound||1;
         const dl=$('d-plist');dl.innerHTML='';
         d.players.forEach(p=>{
             const t=document.createElement('div');
             t.className='ptag'+(p.id===d.currentMessengerId?' msgr':'');
-            t.textContent=p.name.toUpperCase();
-            dl.appendChild(t);
+            t.textContent=p.name.toUpperCase();dl.appendChild(t);
         });
-        if(!window._raidRevealedRound||window._raidRevealedRound!==d.currentRound){
-            $('raid-result').style.display='none';
-            $('raid-result').innerHTML='';
+        if(statusChanged){
+            $('raid-result').style.display='none';$('raid-result').innerHTML='';
             $('b-reveal').style.display=isHost?'block':'none';
-        }else{
-            $('b-reveal').style.display='none';
         }
-        window._currentWord=d.currentWord;
-        window._playerWords=d.playerWords||[];
-        window._currentRoundNum=d.currentRound;
-        window._isPoliceRaid=d.isPoliceRaid||false;
-        window._moleId=d.moleId||'';
-        window._players=d.players||[];
-        
-        const isFinal=d.currentRound>=d.totalRounds;
         $('b-next').style.display=isHost?'block':'none';
-        $('b-next').textContent=isFinal?'Finish Game':'Next Round';
+        $('b-next').textContent='Next Round';
+        $('b-next').disabled=false;
         $('b-end').style.display=isHost?'block':'none';
     }
     else if(st==='game_over'){show('S8')}
 }
 
-// ── EVENT LISTENERS ──
+/* ─── EVENT LISTENERS ─── */
 
-// Tap feedback — add visible press animation on all buttons
+// Tap feedback
 document.querySelectorAll('.btn').forEach(btn=>{
     btn.addEventListener('touchstart',function(){this.classList.add('tapped')},{passive:true});
     btn.addEventListener('touchend',function(){const b=this;setTimeout(()=>b.classList.remove('tapped'),150)},{passive:true});
@@ -724,37 +727,22 @@ $('b-create').onclick=createGame;
 $('b-join').onclick=()=>{const id=$('i-join').value.trim();if(id)joinGame(id,true)};
 $('i-join').onkeypress=e=>{if(e.key==='Enter')$('b-join').click()};
 
-// Disable until auth ready
-$('b-create').disabled=true;
-$('b-join').disabled=true;
-$('b-create').textContent='Connecting...';
+$('b-create').disabled=true;$('b-join').disabled=true;$('b-create').textContent='Connecting...';
+setTimeout(()=>{if($('b-create').disabled){$('b-create').disabled=false;$('b-join').disabled=false;$('b-create').textContent='Create Room';localStorage.removeItem('rmGid');localStorage.removeItem('rmUid');show('S0')}},8000);
 
-// Safety net — never leave buttons stuck disabled
-setTimeout(()=>{
-    if($('b-create').disabled){
-        console.warn('Auth timeout — force-enabling buttons');
-        $('b-create').disabled=false;
-        $('b-join').disabled=false;
-        $('b-create').textContent='Create Room';
-        // Clear potentially stale data
-        localStorage.removeItem('rmGid');
-        localStorage.removeItem('rmUid');
-        show('S0');
-    }
-},8000);
 $('b-add').onclick=addPlayer;
 $('i-name').onkeypress=e=>{if(e.key==='Enter')addPlayer()};
 $('b-start').onclick=startGame;
 
 $('b-back').onclick=async()=>{
     if(!gid)return;
-    const ref=doc(db,COL,gid),snap=await getDoc(ref),d=snap.data();
-    if(uid===d.hostId)await deleteDoc(ref);
-    else{const me=d.players.find(p=>p.id===uid);if(me)await updateDoc(ref,{players:arrayRemove(me)})}
-    // Full cleanup since leaving from lobby
-    if(unsub)unsub();unsub=null;
-    clearAckTimer();
-    localStorage.removeItem('rmGid');
+    try{
+        const ref=doc(db,COL,gid),snap=await getDoc(ref),d=snap.data();
+        if(uid===d.hostId)await deleteDoc(ref);
+        else{const me=d.players.find(p=>p.id===uid);if(me)await updateDoc(ref,{players:arrayRemove(me)})}
+    }catch(e){}
+    if(unsub)unsub();unsub=null;clearAckTimer();
+    localStorage.removeItem('rmGid');gid=null;
     $('pid').style.display='none';$('cstat').style.display='none';$('xbtn').style.display='none';
     show('S0');
 };
@@ -767,33 +755,31 @@ $('b-word').onclick=()=>{
 };
 $('i-word').onkeypress=e=>{if(e.key==='Enter')$('b-word').click()};
 
-// Role reveal - tap eye to see role
-$('role-overlay').onclick=async()=>{
+// Role reveal — uses _snapData (set by onSnapshot), never a separate getDoc
+$('role-overlay').onclick=()=>{
+    const d=_snapData;
+    if(!d||d.status!=='role_reveal')return;
+    _roleRevealed=true;
     $('role-overlay').classList.add('off');
     $('role-content').style.visibility='visible';
     $('b-ack').style.display='block';
-    
-    const snap=await getDoc(doc(db,COL,gid));
-    const d=snap.data();
     const isMole=d.isPoliceRaid||(d.moleId===uid);
-    
     if(isMole){
         $('role-content').innerHTML='<div style="color:var(--pink);font-family:var(--font-d);font-size:1.2rem;font-weight:900">YOU ARE THE MOLE!</div>'+
             '<p class="t-m mt2" style="font-size:.8rem">You don\'t know the project. Blend in!</p>';
     }else{
         $('role-content').innerHTML='<div><p class="t-m t-sm">The Project:</p>'+
             '<div style="color:var(--cyan);font-family:var(--font-d);font-size:1.1rem;font-weight:900;margin-top:8px;direction:auto;word-break:break-word">'+
-            d.currentWord+'</div></div>';
+            (d.currentWord||'')+'</div></div>';
     }
-    startAckTimer();
-};
-
-$('b-ack').onclick=()=>{
     clearAckTimer();
-    acknowledgeRole();
+    let secs=20;$('ack-secs').textContent=secs;$('ack-timer').style.display='block';
+    ackInterval=setInterval(()=>{secs--;$('ack-secs').textContent=secs;if(secs<=0)clearInterval(ackInterval)},1000);
+    ackTimer=setTimeout(()=>acknowledgeRole(),20000);
 };
 
-// Messenger reveal
+$('b-ack').onclick=acknowledgeRole;
+
 $('w-overlay').onclick=()=>{
     $('w-overlay').classList.add('off');
     $('r-word').style.visibility='visible';
@@ -801,42 +787,27 @@ $('w-overlay').onclick=()=>{
 };
 $('b-read').onclick=messengerDone;
 
-// Police Raid reveal
+// Reveal source — reads from _snapData, not stale globals
 $('b-reveal').onclick=()=>{
-    const word=window._currentWord||'';
-    const isRaid=window._isPoliceRaid||false;
-    const moleId=window._moleId||'';
-    const players=window._players||[];
+    const d=_snapData;if(!d)return;
     const result=$('raid-result');
-    
-    if(isRaid){
-        result.innerHTML='<div class="raid-box">'+
-            '<div class="raid-title">🚨 POLICE RAID 🚨</div>'+
-            '<div class="raid-word" dir="auto">'+word+'</div>'+
+    if(d.isPoliceRaid){
+        result.innerHTML='<div class="raid-box"><div class="raid-title">🚨 POLICE RAID 🚨</div>'+
+            '<div class="raid-word" dir="auto">'+(d.currentWord||'')+'</div>'+
             '<div class="raid-sub">Police Raid! Everyone was the mole this round!</div></div>';
     }else{
-        const mole=players.find(p=>p.id===moleId);
-        const moleName=mole?mole.name:'???';
-        result.innerHTML='<div class="safe-box">'+
-            '<div class="safe-title">The Mole Was...</div>'+
-            '<div class="safe-word">'+moleName.toUpperCase()+'</div>'+
-            '<div class="safe-sub" dir="auto">Project: '+word+'</div></div>';
+        const mole=d.players.find(p=>p.id===d.moleId);
+        result.innerHTML='<div class="safe-box"><div class="safe-title">The Mole Was...</div>'+
+            '<div class="safe-word">'+(mole?mole.name.toUpperCase():'???')+'</div>'+
+            '<div class="safe-sub" dir="auto">Project: '+(d.currentWord||'')+'</div></div>';
     }
     result.style.display='block';
     $('b-reveal').style.display='none';
-    window._raidRevealedRound=window._currentRoundNum;
 };
 
-$('b-next').onclick=()=>{$('b-next').disabled=true;nextRound().finally(()=>{$('b-next').disabled=false})};
-$('b-end').onclick=()=>{if(confirm('End game for everyone?'))deleteDoc(doc(db,COL,gid))};
-$('b-again').onclick=()=>{
-    if(unsub)unsub();unsub=null;
-    clearAckTimer();
-    localStorage.removeItem('rmGid');
-    gid=null;
-    $('pid').style.display='none';$('cstat').style.display='none';$('xbtn').style.display='none';
-    show('S0');
-};
+$('b-next').onclick=()=>{$('b-next').disabled=true;nextRound()};
+$('b-end').onclick=()=>{if(confirm('End game for everyone?'))guard('endGame',async()=>{await updateDoc(doc(db,COL,gid),{status:'game_over'})})};
+$('b-again').onclick=cleanup;
 
 $('id-box').onclick=()=>{
     const t=$('id-txt').textContent;
@@ -851,61 +822,44 @@ $('id-box').onclick=()=>{
 
 $('xbtn').onclick=async()=>{
     if(!gid||!confirm('Exit to menu? You will be removed from the game.'))return;
-    const ref=doc(db,COL,gid);
-    try{const snap=await getDoc(ref);if(snap.exists()){
-        const d=snap.data();
-        const me=d.players.find(p=>p.id===uid);
-        if(me)await updateDoc(ref,{players:arrayRemove(me)});
-        // If everyone left, delete the game
-        const updated=await getDoc(ref);
-        if(updated.exists()&&updated.data().players.length===0)await deleteDoc(ref);
-    }}catch(e){}
-    if(unsub)unsub();unsub=null;
-    clearAckTimer();
-    localStorage.removeItem('rmGid');
-    gid=null;
+    try{
+        const ref=doc(db,COL,gid),snap=await getDoc(ref);
+        if(snap.exists()){
+            const d=snap.data(),me=d.players.find(p=>p.id===uid);
+            if(me)await updateDoc(ref,{players:arrayRemove(me)});
+            const u=await getDoc(ref);
+            if(u.exists()&&u.data().players.length===0)await deleteDoc(ref);
+        }
+    }catch(e){}
+    if(unsub)unsub();unsub=null;clearAckTimer();
+    localStorage.removeItem('rmGid');gid=null;
     $('pid').style.display='none';$('cstat').style.display='none';$('xbtn').style.display='none';
     show('S0');
 };
 
 $('b-rc-y').onclick=async()=>{
-    const id=$('rc-id').textContent;
-    if(!id)return;
-    hideReconnect();
-    try{
-        const snap=await getDoc(doc(db,COL,id));
-        if(!snap.exists()){
-            localStorage.removeItem('rmGid');
-            show('S0');
-            return;
-        }
-        joinGame(id,false);
-    }catch(e){
-        localStorage.removeItem('rmGid');
-        show('S0');
-    }
+    const id=$('rc-id').textContent;if(!id)return;
+    $('S1').style.display='none';
+    try{const snap=await getDoc(doc(db,COL,id));
+        if(!snap.exists()){localStorage.removeItem('rmGid');show('S0');return}
+        connectToGame(id);
+    }catch(e){localStorage.removeItem('rmGid');show('S0')}
 };
-$('b-rc-n').onclick=()=>{
-    localStorage.removeItem('rmGid');
-    hideReconnect();
-    show('S0');
-};
+$('b-rc-n').onclick=()=>{localStorage.removeItem('rmGid');$('S1').style.display='none';show('S0')};
 
 document.addEventListener('visibilitychange',async()=>{
     if(!document.hidden&&gid){
-        try{const s=await getDoc(doc(db,COL,gid));if(s.exists())render(s.data())}catch(e){}
+        try{const s=await getDoc(doc(db,COL,gid));if(s.exists()){_snapData=s.data();render(s.data())}}catch(e){}
     }
 });
 
-// ── MUSIC (lazy loaded) ──
-
+/* ─── MUSIC ─── */
 let musicParts=[],musicInst=null,mTrack=0,musicReady=false;
 const MTK=[
     {bpm:135,bass:['E2',0,'E2','G2','A2',0,'G2',0],lead:['E4',0,'G4',0,'A4','B4','A4',0],pad:[['E3','G3','B3'],0,0,0,['A3','C4','E4'],0,0,0],kick:['C1',0,0,'C1','C1',0,0,0],hihat:['C4',0,'C4',0,'C4',0,'C4','C4'],arp:['E5','G5','B5','E5','A5','E5','G5','B5']},
     {bpm:142,bass:['C2','C2','Eb2',0,'F2','F2','G2',0],lead:[0,'C5','Eb5',0,'F5',0,'G5','Eb5'],pad:[['C3','Eb3','G3'],0,0,0,['F3','Ab3','C4'],0,0,0],kick:['C1',0,'C1',0,'C1',0,'C1','C1'],hihat:['C4','C4','C4','C4','C4','C4','C4','C4'],arp:['C5','Eb5','G5','C6','G5','Eb5','C5','G4']},
     {bpm:128,bass:['A1',0,'A1',0,'D2',0,'E2',0],lead:['A4','C5','E5',0,'D5',0,'C5','A4'],pad:[['A3','C4','E4'],0,0,0,['D3','F3','A3'],0,0,0],kick:['C1',0,0,'C1',0,'C1',0,0],hihat:['C4',0,'C4','C4','C4',0,'C4',0],arp:['A4','E5','A5','E5','D5','A4','D5','A4']}
 ];
-
 function initMusic(){
     if(musicReady)return;const S=window.Tone;if(!S)return;
     musicInst={
@@ -915,81 +869,48 @@ function initMusic(){
         kick:new S.MembraneSynth({pitchDecay:.05,octaves:8,envelope:{attack:.001,decay:.3,sustain:0,release:1},volume:-6}).toDestination(),
         hihat:new S.MetalSynth({frequency:400,envelope:{attack:.001,decay:.03,release:.01},harmonicity:6,modulationIndex:32,resonance:5000,octaves:1.5,volume:-14}).toDestination(),
         arp:new S.MonoSynth({oscillator:{type:"triangle"},envelope:{attack:.005,decay:.08,sustain:.05,release:.2},volume:-12}).toDestination()
-    };
-    musicReady=true;
+    };musicReady=true;
 }
-
 function loadTrack(i){
     const S=window.Tone;musicParts.forEach(p=>p.dispose());musicParts=[];
     const t=MTK[i];S.Transport.bpm.value=t.bpm;
     const mk=(arr,inst,dur,sub)=>{musicParts.push(new S.Sequence((time,n)=>{if(n&&n!==0){if(Array.isArray(n))inst.triggerAttackRelease(n,dur,time);else inst.triggerAttackRelease(n,dur,time)}},arr,sub).start(0))};
-    if(t.kick)mk(t.kick,musicInst.kick,'8n','8n');
-    if(t.hihat)mk(t.hihat,musicInst.hihat,'16n','8n');
-    if(t.bass)mk(t.bass,musicInst.bass,'8n','8n');
-    if(t.lead)mk(t.lead,musicInst.lead,'16n','8n');
-    if(t.pad)mk(t.pad,musicInst.pad,'2n','2n');
-    if(t.arp)mk(t.arp,musicInst.arp,'32n','16n');
+    if(t.kick)mk(t.kick,musicInst.kick,'8n','8n');if(t.hihat)mk(t.hihat,musicInst.hihat,'16n','8n');
+    if(t.bass)mk(t.bass,musicInst.bass,'8n','8n');if(t.lead)mk(t.lead,musicInst.lead,'16n','8n');
+    if(t.pad)mk(t.pad,musicInst.pad,'2n','2n');if(t.arp)mk(t.arp,musicInst.arp,'32n','16n');
 }
-
 $('mbtn').onclick=()=>{
     const S=window.Tone;if(!S)return;initMusic();
-    if(S.context.state!=='running'){
-        S.context.resume().then(()=>{mTrack=(mTrack+1)%MTK.length;loadTrack(mTrack);S.Transport.start();
-        $('mbtn').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>'});
-    }else if(S.Transport.state==='started'){
-        S.Transport.stop();
-        $('mbtn').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="17" y1="9" y2="15"/><line x1="17" x2="23" y1="9" y2="15"/></svg>';
-    }else{
-        mTrack=(mTrack+1)%MTK.length;loadTrack(mTrack);S.Transport.start();
-        $('mbtn').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
-    }
+    if(S.context.state!=='running'){S.context.resume().then(()=>{mTrack=(mTrack+1)%MTK.length;loadTrack(mTrack);S.Transport.start();$('mbtn').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>'})}
+    else if(S.Transport.state==='started'){S.Transport.stop();$('mbtn').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="17" y1="9" y2="15"/><line x1="17" x2="23" y1="9" y2="15"/></svg>'}
+    else{mTrack=(mTrack+1)%MTK.length;loadTrack(mTrack);S.Transport.start();$('mbtn').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>'}
 };
-
 const toneScript=document.createElement('script');
 toneScript.src='https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js';
 toneScript.async=true;document.head.appendChild(toneScript);
 
-// ── INIT ──
+/* ─── INIT ─── */
 signInAnonymously(auth).then(async(c)=>{
-    // Use stored UID if available (for reconnection after refresh)
-    // Otherwise use the new Firebase UID
     let stored=localStorage.getItem('rmUid');
-    if(stored){
-        uid=stored;
-    }else{
-        uid=c.user.uid;
-        localStorage.setItem('rmUid',uid);
-    }
-    // Auth ready — enable buttons
-    $('b-create').disabled=false;
-    $('b-join').disabled=false;
-    $('b-create').textContent='Create Room';
-    // Run stale game cleanup in background
+    if(stored){uid=stored}else{uid=c.user.uid;localStorage.setItem('rmUid',uid)}
+    $('b-create').disabled=false;$('b-join').disabled=false;$('b-create').textContent='Create Room';
     cleanupStaleGames();
     const last=localStorage.getItem('rmGid');
     if(last){
         try{
             const snap=await getDoc(doc(db,COL,last));
-            if(snap.exists()){
-                const d=snap.data();
-                const inGame=d.players&&d.players.some(p=>p.id===uid);
-                if(d.status!=='game_over'&&inGame){
-                    $('rc-id').textContent=last;showReconnect();return;
-                }
+            if(snap.exists()&&snap.data().status!=='game_over'&&snap.data().players&&snap.data().players.some(p=>p.id===uid)){
+                $('rc-id').textContent=last;$('S1').style.display='flex';return;
             }
-        }catch(e){console.error('Reconnect check failed:',e)}
+        }catch(e){}
         localStorage.removeItem('rmGid');
     }
     show('S0');
 }).catch(e=>{
     console.error('Auth failed:',e);
-    // Still enable buttons — clicking will reload
-    $('b-create').textContent='Tap to Retry';
-    $('b-create').disabled=false;
-    $('b-join').disabled=false;
-    $('b-create').onclick=()=>{location.reload()};
+    $('b-create').textContent='Tap to Retry';$('b-create').disabled=false;$('b-join').disabled=false;
+    $('b-create').onclick=()=>location.reload();
 });
-
 </script>
 </body>
 </html>
