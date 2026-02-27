@@ -246,7 +246,7 @@
 <div id="S1" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(29,53,87,.95);padding:16px;flex-direction:column;align-items:center;justify-content:center">
     <div class="c" style="text-align:center;max-width:400px;width:100%">
         <div class="t-section mb3">Reconnect?</div>
-        <p class="t-m mb4">Found session <span id="rc-id" class="msgr-name" style="font-size:.9rem"></span></p>
+        <p class="t-m mb4">It looks like you were in game <span id="rc-id" class="msgr-name" style="font-size:.9rem"></span>. Would you like to reconnect?</p>
         <button id="b-rc-y" class="btn btn-p mb2">Yes, Reconnect</button>
         <button id="b-rc-n" class="btn btn-s">Return to Menu</button>
     </div>
@@ -357,7 +357,7 @@
 <!-- Fixed -->
 <div id="pid">GAME: <span id="pid-t"></span></div>
 <button id="mbtn"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></button>
-<button id="xbtn">← Exit</button>
+<button id="xbtn">← Exit to Menu</button>
 <div id="cstat">● ONLINE</div>
 
 <script type="module">
@@ -444,7 +444,8 @@ async function joinGame(id,isNew){
     let snap;
     try{snap=await getDoc(ref)}catch(e){alert("Connection error.");return}
     if(!snap.exists()){alert("Game not found!");localStorage.removeItem('rmGid');show('S0');return}
-    if(isNew&&snap.data().status!=='lobby'){alert("Game already started.");return}
+    const gameData=snap.data();
+    if(isNew&&gameData.status!=='lobby'){alert("Game already started.");return}
     gid=id;
     localStorage.setItem('rmGid',gid);
     $('pid-t').textContent=gid;
@@ -466,6 +467,7 @@ function cleanup(){
     if(unsub)unsub();unsub=null;
     clearAckTimer();
     localStorage.removeItem('rmGid');
+    gid=null;
     $('pid').style.display='none';$('cstat').style.display='none';$('xbtn').style.display='none';
     show('S0');
 }
@@ -735,7 +737,12 @@ $('b-back').onclick=async()=>{
     const ref=doc(db,COL,gid),snap=await getDoc(ref),d=snap.data();
     if(uid===d.hostId)await deleteDoc(ref);
     else{const me=d.players.find(p=>p.id===uid);if(me)await updateDoc(ref,{players:arrayRemove(me)})}
-    cleanup();
+    // Full cleanup since leaving from lobby
+    if(unsub)unsub();unsub=null;
+    clearAckTimer();
+    localStorage.removeItem('rmGid');
+    $('pid').style.display='none';$('cstat').style.display='none';$('xbtn').style.display='none';
+    show('S0');
 };
 
 $('b-word').onclick=()=>{
@@ -808,7 +815,14 @@ $('b-reveal').onclick=()=>{
 
 $('b-next').onclick=()=>{$('b-next').disabled=true;nextRound().finally(()=>{$('b-next').disabled=false})};
 $('b-end').onclick=()=>{if(confirm('End game for everyone?'))deleteDoc(doc(db,COL,gid))};
-$('b-again').onclick=cleanup;
+$('b-again').onclick=()=>{
+    if(unsub)unsub();unsub=null;
+    clearAckTimer();
+    localStorage.removeItem('rmGid');
+    gid=null;
+    $('pid').style.display='none';$('cstat').style.display='none';$('xbtn').style.display='none';
+    show('S0');
+};
 
 $('id-box').onclick=()=>{
     const t=$('id-txt').textContent;
@@ -822,10 +836,22 @@ $('id-box').onclick=()=>{
 };
 
 $('xbtn').onclick=async()=>{
-    if(!gid||!confirm('Exit to menu?'))return;
+    if(!gid||!confirm('Exit to menu? You will be removed from the game.'))return;
     const ref=doc(db,COL,gid);
-    try{const snap=await getDoc(ref);if(snap.exists()){const me=snap.data().players.find(p=>p.id===uid);if(me)await updateDoc(ref,{players:arrayRemove(me)})}}catch(e){}
-    cleanup();
+    try{const snap=await getDoc(ref);if(snap.exists()){
+        const d=snap.data();
+        const me=d.players.find(p=>p.id===uid);
+        if(me)await updateDoc(ref,{players:arrayRemove(me)});
+        // If everyone left, delete the game
+        const updated=await getDoc(ref);
+        if(updated.exists()&&updated.data().players.length===0)await deleteDoc(ref);
+    }}catch(e){}
+    if(unsub)unsub();unsub=null;
+    clearAckTimer();
+    localStorage.removeItem('rmGid');
+    gid=null;
+    $('pid').style.display='none';$('cstat').style.display='none';$('xbtn').style.display='none';
+    show('S0');
 };
 
 $('b-rc-y').onclick=async()=>{
@@ -845,7 +871,11 @@ $('b-rc-y').onclick=async()=>{
         show('S0');
     }
 };
-$('b-rc-n').onclick=()=>{localStorage.removeItem('rmGid');localStorage.removeItem('rmUid');hideReconnect();show('S0')};
+$('b-rc-n').onclick=()=>{
+    localStorage.removeItem('rmGid');
+    hideReconnect();
+    show('S0');
+};
 
 document.addEventListener('visibilitychange',async()=>{
     if(!document.hidden&&gid){
@@ -923,6 +953,7 @@ signInAnonymously(auth).then(async(c)=>{
             const d=snap.data();
             const inGame=d.players&&d.players.some(p=>p.id===uid);
             if(d.status!=='game_over'&&inGame){
+                // Player is still in the game — they refreshed/crashed
                 $('rc-id').textContent=last;showReconnect();return;
             }
         }}catch(e){}
