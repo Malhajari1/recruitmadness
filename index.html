@@ -728,6 +728,20 @@ $('i-join').onkeypress=e=>{if(e.key==='Enter')$('b-join').click()};
 $('b-create').disabled=true;
 $('b-join').disabled=true;
 $('b-create').textContent='Connecting...';
+
+// Safety net — never leave buttons stuck disabled
+setTimeout(()=>{
+    if($('b-create').disabled){
+        console.warn('Auth timeout — force-enabling buttons');
+        $('b-create').disabled=false;
+        $('b-join').disabled=false;
+        $('b-create').textContent='Create Room';
+        // Clear potentially stale data
+        localStorage.removeItem('rmGid');
+        localStorage.removeItem('rmUid');
+        show('S0');
+    }
+},8000);
 $('b-add').onclick=addPlayer;
 $('i-name').onkeypress=e=>{if(e.key==='Enter')addPlayer()};
 $('b-start').onclick=startGame;
@@ -937,9 +951,15 @@ toneScript.async=true;document.head.appendChild(toneScript);
 
 // ── INIT ──
 signInAnonymously(auth).then(async(c)=>{
-    let s=localStorage.getItem('rmUid');
-    if(!s){s=c.user.uid;localStorage.setItem('rmUid',s)}
-    uid=s;
+    // Use stored UID if available (for reconnection after refresh)
+    // Otherwise use the new Firebase UID
+    let stored=localStorage.getItem('rmUid');
+    if(stored){
+        uid=stored;
+    }else{
+        uid=c.user.uid;
+        localStorage.setItem('rmUid',uid);
+    }
     // Auth ready — enable buttons
     $('b-create').disabled=false;
     $('b-join').disabled=false;
@@ -948,19 +968,27 @@ signInAnonymously(auth).then(async(c)=>{
     cleanupStaleGames();
     const last=localStorage.getItem('rmGid');
     if(last){
-        try{const snap=await getDoc(doc(db,COL,last));
-        if(snap.exists()){
-            const d=snap.data();
-            const inGame=d.players&&d.players.some(p=>p.id===uid);
-            if(d.status!=='game_over'&&inGame){
-                // Player is still in the game — they refreshed/crashed
-                $('rc-id').textContent=last;showReconnect();return;
+        try{
+            const snap=await getDoc(doc(db,COL,last));
+            if(snap.exists()){
+                const d=snap.data();
+                const inGame=d.players&&d.players.some(p=>p.id===uid);
+                if(d.status!=='game_over'&&inGame){
+                    $('rc-id').textContent=last;showReconnect();return;
+                }
             }
-        }}catch(e){}
+        }catch(e){console.error('Reconnect check failed:',e)}
         localStorage.removeItem('rmGid');
     }
     show('S0');
-}).catch(e=>{console.error('Auth failed:',e);$('b-create').textContent='Connection Failed';alert("Could not connect: "+e.message+". Please refresh.")});
+}).catch(e=>{
+    console.error('Auth failed:',e);
+    // Still enable buttons — clicking will reload
+    $('b-create').textContent='Tap to Retry';
+    $('b-create').disabled=false;
+    $('b-join').disabled=false;
+    $('b-create').onclick=()=>{location.reload()};
+});
 
 </script>
 </body>
